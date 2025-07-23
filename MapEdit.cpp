@@ -12,34 +12,40 @@
 
 
 MapEdit::MapEdit()
-	:GameObject(), myMap_(MAP_WIDTH* MAP_HEIGHT, -1), //初期値を-1で20*20の配列を初期化する
+	:GameObject(), efg_(GetMapEditConfig()),layer_(0), //初期値を-1で20*20の配列を初期化する
 	isInMapEditArea_(false) //マップエディタ領域内にいるかどうか
 {
-	mapEditRect_ = { LEFT_MARGIN, TOP_MARGIN,
-		MAP_WIDTH * MAP_IMAGE_SIZE, MAP_HEIGHT * MAP_IMAGE_SIZE };
+	myMap_.resize(3);
+	for (auto& row : myMap_)
+	{
+		row.resize(efg_.MAP_HEIGHT * efg_.MAP_WIDTH, -1);
+	}
+
+	mapEditRect_ = { efg_.LEFT_MARGIN, efg_.TOP_MARGIN,
+		efg_.MAP_WIDTH * efg_.MAP_IMAGE_SIZE, efg_.MAP_HEIGHT * efg_.MAP_IMAGE_SIZE};
 }
 
 MapEdit::~MapEdit()
 {
 }
 
-void MapEdit::SetMap(Point p, int value)
+void MapEdit::SetMap(Point p, int value, int nowrow)
 {
 	//マップの座標pにvalueをセットする
 	//pが、配列の範囲外の時はassertにひっかかる
-	assert(p.x >= 0 && p.x < MAP_WIDTH);
-	assert(p.y >= 0 && p.y < MAP_HEIGHT);
-	myMap_[p.y * MAP_WIDTH + p.x] = value; //y行x列にvalueをセットする
+	assert(p.x >= 0 && p.x < efg_.MAP_WIDTH);
+	assert(p.y >= 0 && p.y < efg_.MAP_HEIGHT);
+	myMap_[nowrow][p.y * efg_.MAP_WIDTH + p.x] = value; //y行x列にvalueをセットする
 
 }
 
-int MapEdit::GetMap(Point p) const
+int MapEdit::GetMap(Point p, int nowrow) const
 {
 	//マップの座標pの値を取得する
 	//pが、配列の範囲外の時はassertにひっかかる
-	assert(p.x >= 0 && p.x < MAP_WIDTH);
-	assert(p.y >= 0 && p.y < MAP_HEIGHT);
-	return myMap_[p.y * MAP_WIDTH + p.x]; //y行x列の値を取得する
+	assert(p.x >= 0 && p.x < efg_.MAP_WIDTH);
+	assert(p.y >= 0 && p.y < efg_.MAP_HEIGHT);
+	return myMap_[nowrow][p.y * efg_.MAP_WIDTH + p.x]; //y行x列の値を取得する
 
 }
 
@@ -50,8 +56,8 @@ void MapEdit::Update()
 		return;
 	}
 	// マウスの座標がマップエディタ領域内にいるかどうかを判定する
-	isInMapEditArea_ = mousePos.x >= mapEditRect_.x && mousePos.x <= mapEditRect_.x + mapEditRect_.w &&
-		mousePos.y >= mapEditRect_.y && mousePos.y <= mapEditRect_.y + mapEditRect_.h;
+	isInMapEditArea_ = mousePos.x > mapEditRect_.x && mousePos.x < mapEditRect_.x + mapEditRect_.w &&
+		mousePos.y > mapEditRect_.y && mousePos.y < mapEditRect_.y + mapEditRect_.h;
 
 	//左上　mapEditRect_.x, mapEditRect_.y
 	//右上　mapEditRect_.x + mapEditRect_.w, mapEditRect_.y
@@ -62,11 +68,12 @@ void MapEdit::Update()
 		return; //マップエディタ領域外なら何もしない
 	}
 
-	int gridX = (mousePos.x - LEFT_MARGIN) / MAP_IMAGE_SIZE;
-	int gridY = (mousePos.y - TOP_MARGIN) / MAP_IMAGE_SIZE;
+	int gridX = (mousePos.x - efg_.LEFT_MARGIN) / efg_.MAP_IMAGE_SIZE;
+	int gridY = (mousePos.y - efg_.TOP_MARGIN) / efg_.MAP_IMAGE_SIZE;
 
-	drawAreaRect_ = { LEFT_MARGIN + gridX * MAP_IMAGE_SIZE, TOP_MARGIN + gridY * MAP_IMAGE_SIZE,
-		MAP_IMAGE_SIZE, MAP_IMAGE_SIZE };
+	drawAreaRect_ = { efg_.LEFT_MARGIN + gridX * efg_.MAP_IMAGE_SIZE,
+		efg_.TOP_MARGIN + gridY * efg_.MAP_IMAGE_SIZE,
+		efg_.MAP_IMAGE_SIZE, efg_.MAP_IMAGE_SIZE };
 
 	//マウスのボタンが押されたら、持ってる画像をその座標に貼る
 	//if (Input::IsButtonDown(MOUSE_INPUT_LEFT)) //左クリックでマップに値をセット
@@ -90,12 +97,14 @@ void MapEdit::Update()
 
 		if (CheckHitKey(KEY_INPUT_LSHIFT)) //Rキーを押しているなら
 		{
-			SetMap({ gridX, gridY }, -1); //マップに値をセット（-1は何もない状態）
+			printfDx("マスが消されています\n");
+			SetMap({ gridX, gridY }, -1, layer_); //マップに値をセット（-1は何もない状態）
 			return; //マップチップを削除したらここで終了
 		}
 		else if (mapChip && mapChip->IsHold()) //マップチップを持っているなら
 		{
-			SetMap({ gridX, gridY }, mapChip->GetHoldImage()); //マップに値をセット
+			printfDx("チップが設置されています\n");
+			SetMap({ gridX, gridY }, mapChip->GetHoldImage(), layer_); //マップに値をセット
 		}
 	}
 	if (Input::IsKeyDown(KEY_INPUT_S))
@@ -106,33 +115,48 @@ void MapEdit::Update()
 	{
 		LoadMapData();
 	}
+	if (Input::IsKeyDown(KEY_INPUT_C))
+	{
+		printfDx("クリアされました\n");
+		ClearLayer();
+	}
+
+	ChangeLayer();
 }
 
 void MapEdit::Draw()
 {//背景を描画する
 
-	for (int j = 0;j < MAP_HEIGHT;j++)
+	for (int layer = 0;layer < 3;layer++)
 	{
-		for (int i = 0; i < MAP_WIDTH; i++)
+		for (int j = 0;j < efg_.MAP_HEIGHT;j++)
 		{
-			int value = GetMap({ i,j });
-			if (value != -1) //-1なら何も描画しない
+			for (int i = 0; i < efg_.MAP_WIDTH; i++)
 			{
-				DrawGraph(LEFT_MARGIN + i * MAP_IMAGE_SIZE, TOP_MARGIN + j * MAP_IMAGE_SIZE,
-					value, TRUE);
+				int value = GetMap({ i,j }, layer);
+				if (value != -1) //-1なら何も描画しない
+				{
+					DrawGraph(efg_.LEFT_MARGIN + i * efg_.MAP_IMAGE_SIZE,
+						efg_.TOP_MARGIN + j * efg_.MAP_IMAGE_SIZE,
+						value, TRUE);
+				}
 			}
 		}
 	}
 
 	SetDrawBlendMode(DX_BLENDMODE_ALPHA, 128);
-	DrawBox(LEFT_MARGIN + 0, TOP_MARGIN + 0,
-		LEFT_MARGIN + MAP_WIDTH * MAP_IMAGE_SIZE, TOP_MARGIN + MAP_HEIGHT * MAP_IMAGE_SIZE, GetColor(255, 255, 0), FALSE, 5);
-	for (int j = 0; j < MAP_HEIGHT; j++) {
-		for (int i = 0; i < MAP_WIDTH; i++) {
-			DrawLine(LEFT_MARGIN + i * MAP_IMAGE_SIZE, TOP_MARGIN + j * MAP_IMAGE_SIZE,
-				LEFT_MARGIN + (i + 1) * MAP_IMAGE_SIZE, TOP_MARGIN + j * MAP_IMAGE_SIZE, GetColor(255, 255, 255), 1);
-			DrawLine(LEFT_MARGIN + i * MAP_IMAGE_SIZE, TOP_MARGIN + j * MAP_IMAGE_SIZE,
-				LEFT_MARGIN + i * MAP_IMAGE_SIZE, TOP_MARGIN + (j + 1) * MAP_IMAGE_SIZE, GetColor(255, 255, 255), 1);
+	DrawBox(efg_.LEFT_MARGIN + 0, efg_.TOP_MARGIN + 0,
+		efg_.LEFT_MARGIN + efg_.MAP_WIDTH * efg_.MAP_IMAGE_SIZE, 
+		efg_.TOP_MARGIN + efg_.MAP_HEIGHT * efg_.MAP_IMAGE_SIZE,
+		GetColor(255, 255, 0), FALSE, 5);
+	for (int j = 0; j < efg_.MAP_HEIGHT; j++) {
+		for (int i = 0; i < efg_.MAP_WIDTH; i++) {
+			DrawLine(efg_.LEFT_MARGIN + i * efg_.MAP_IMAGE_SIZE, efg_.TOP_MARGIN + j * efg_.MAP_IMAGE_SIZE,
+				efg_.LEFT_MARGIN + (i + 1) * efg_.MAP_IMAGE_SIZE, efg_.TOP_MARGIN + j * efg_.MAP_IMAGE_SIZE,
+				GetColor(255, 255, 255), 1);
+			DrawLine(efg_.LEFT_MARGIN + i * efg_.MAP_IMAGE_SIZE, efg_.TOP_MARGIN + j * efg_.MAP_IMAGE_SIZE,
+				efg_.LEFT_MARGIN + i * efg_.MAP_IMAGE_SIZE, efg_.TOP_MARGIN + (j + 1) * efg_.MAP_IMAGE_SIZE, 
+				GetColor(255, 255, 255), 1);
 		}
 	}
 	if (isInMapEditArea_) {
@@ -144,7 +168,20 @@ void MapEdit::Draw()
 	SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 
 
+	for (int i = 0;i < 3;i++)
+	{
 
+		int displayIndex = 2 - i; // 逆順にして表示位置を反転
+		if (layer_ == displayIndex)
+		{
+			DrawBox(800, 540 + 30 * i, 830, 540 + 30 * i + 30, GetColor(255, 255, 255), FALSE);
+			DrawBox(801, 541 + 30 * i, 829, 540 + 30 * i + 29, GetColor(0,255,0), TRUE);
+		}
+		else
+		{
+			DrawBox(800, 540 + 30 * i, 830, 540 + 30 * i + 30, GetColor(255, 255, 255), FALSE);
+		}
+	}
 }
 
 void MapEdit::SaveMapData()
@@ -175,26 +212,30 @@ void MapEdit::SaveMapData()
 
 		MapChip* mc = FindGameObject<MapChip>();
 
-		for (int j = 0; j < MAP_HEIGHT; j++) {
-			for (int i = 0; i < MAP_WIDTH; i++) {
+		for (int layer = 0;layer < 3;layer++)
+		{
+			openfile << "#Layer " << layer << "\n";
+			for (int j = 0; j < efg_.MAP_HEIGHT; j++) {
+				for (int i = 0; i < efg_.MAP_WIDTH; i++) {
 
-				int index;
-				if (myMap_[j * MAP_WIDTH + i] != -1)
-					index = mc->GetChipIndex(myMap_[j * MAP_WIDTH + i]);
-				else
-					index = -1;
+					int index;
+					if (myMap_[layer][j * efg_.MAP_WIDTH + i] != -1)
+						index = mc->GetChipIndex(myMap_[layer][j * efg_.MAP_WIDTH + i]);
+					else
+						index = -1;
 
-				if (i == MAP_WIDTH - 1) //最後の要素なら改行しない
-				{
-					openfile << index; //最後の要素はカンマをつけない
+					if (i == efg_.MAP_WIDTH - 1) //最後の要素なら改行しない
+					{
+						openfile << index; //最後の要素はカンマをつけない
+					}
+					else
+					{
+						//最後の要素以外はカンマをつける
+						openfile << index << ",";
+					}
 				}
-				else
-				{
-					//最後の要素以外はカンマをつける
-					openfile << index << ",";
-				}
+				openfile << std::endl;
 			}
-			openfile << std::endl;
 		}
 		openfile.close();
 		printfDx("File Saved!!!\n");
@@ -203,75 +244,121 @@ void MapEdit::SaveMapData()
 
 void MapEdit::LoadMapData()
 {
-	//頑張ってファイル選択ダイアログを出す回
 	TCHAR filename[255] = "";
 	OPENFILENAME ifn = { 0 };
 
 	ifn.lStructSize = sizeof(ifn);
-	//ウィンドウのオーナー＝親ウィンドウのハンドル
 	ifn.hwndOwner = GetMainWindowHandle();
 	ifn.lpstrFilter = "全てのファイル (*.*)\0*.*\0";
 	ifn.lpstrFile = filename;
 	ifn.nMaxFile = 255;
-	//ifn.Flags = OFN_OVERWRITEPROMPT;
-
-	//GetOpenFileName()
 
 	if (GetOpenFileName(&ifn))
 	{
 		printfDx("ファイルが選択された→%s\n", filename);
-		//ファイルを開いて、セーブ
-		//std::filesystem ファイル名だけ取り出す
-		//ifstreamを開く input file stream
+
 		std::ifstream inputfile(filename);
-		//ファイルがオープンしたかどうかはチェックが必要
-		std::string line;
-
-		//マップチップの情報を取りたい！
-		MapChip* mc = FindGameObject<MapChip>();
-		myMap_.clear();//マップを空に！
-		while (std::getline(inputfile, line)) {
-			// 空行はスキップ
-			if (line.empty()) continue;
-			//printfDx("%s\n", line.c_str());
-			//ここに、読み込みの処理を書いていく！
-			if (line[0] != '#')
-			{
-				std::istringstream iss(line);
-				std::string tmp;//これに一個ずつ読み込んでいくよ
-				while (getline(iss, tmp, ',')) {
-					//if(tmp == -1)
-					//	myMap_.push_back( -1);
-					//else
-					//	myMap_.push_back(mc->GetHandle(tmp)); //マップにハンドルをセット
-					printfDx("%s ", tmp.c_str());
-					if (tmp == "-1")
-					{
-						myMap_.push_back(-1); //何もない状態
-					}
-					else
-					{
-						int index = std::stoi(tmp);
-						int handle = mc->GetHandle(index);
-						myMap_.push_back(handle); //マップにハンドルをセット
-					}
-
-					
-				}
-				printfDx("\n");
-			}
-			//else
-			//{
-			//	MessageBox(nullptr, "ファイル形式が間違っています", "読み込みエラー", 
-			//		MB_OK | MB_ICONWARNING);
-			//}
+		if (!inputfile)
+		{
+			printfDx("ファイルを開けませんでした\n");
+			return;
 		}
+
+		MapChip* mc = FindGameObject<MapChip>();
+		myMap_.clear();
+		myMap_.resize(3); // 3層分用意
+
+		int currentLayer = -1;
+
+		std::string line;
+		while (std::getline(inputfile, line)) {
+			if (line.empty()) continue;
+
+			if (line[0] == '#') {
+				// #Layer 0 のようなヘッダーを検出
+				if (line.find("Layer") != std::string::npos)
+				{
+					// 例: "#Layer 0"
+					size_t pos = line.find("Layer");
+					if (pos != std::string::npos)
+					{
+						try {
+							currentLayer = std::stoi(line.substr(pos + 6)); // "Layer "は6文字
+						}
+						catch (...) {
+							currentLayer = -1;
+						}
+
+						if (currentLayer < 0 || currentLayer >= 3) {
+							printfDx("Layer番号がおかしい\n");
+							currentLayer = -1; //無効にする
+						}
+					}
+				}
+				continue; // ヘッダー行は読み込みデータ無し
+			}
+
+			if (currentLayer == -1) {
+				// レイヤー不明なら無視
+				continue;
+			}
+
+			// レイヤーに対応した行を読み込み
+			std::istringstream iss(line);
+			std::string tmp;
+
+			while (std::getline(iss, tmp, ',')) {
+				if (tmp == "-1") {
+					myMap_[currentLayer].push_back(-1);
+				}
+				else {
+					int index = std::stoi(tmp);
+					int handle = mc->GetHandle(index);
+					myMap_[currentLayer].push_back(handle);
+				}
+			}
+		}
+		// 読み込み完了後に念のため、各層のサイズが正しいかチェックやresizeも検討
+		for (int i = 0; i < 3; ++i)
+		{
+			if (myMap_[i].size() != efg_.MAP_HEIGHT * efg_.MAP_WIDTH)
+			{
+				printfDx("Layer %d のサイズが異常です。正規化します。\n", i);
+				myMap_[i].resize(efg_.MAP_HEIGHT * efg_.MAP_WIDTH, -1);
+			}
+		}
+		printfDx("マップデータの読み込み完了\n");
 	}
 	else
 	{
-		//ファイルの選択がキャンセル
-		printfDx("セーブがキャンセル\n");
+		printfDx("ファイルの選択がキャンセルされました\n");
 	}
+}
+
+
+void MapEdit::ChangeLayer()
+{
+	// 仮レイヤーチェンジ
+	// todo マジックナンバーを消す
+	if (Input::IsKeyDown(KEY_INPUT_D)) // Dキーで下の層へ
+	{
+		if (layer_ > 0)
+		{
+			layer_--;
+		}
+	}
+	if (Input::IsKeyDown(KEY_INPUT_U)) // Uキーで上の層へ
+	{
+		if (layer_ < 2)
+		{
+			layer_++;
+		}
+	}
+}
+
+void MapEdit::ClearLayer()
+{
+	std::fill(myMap_[layer_].begin(), myMap_[layer_].end(), -1);
 }
 
 

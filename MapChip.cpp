@@ -1,5 +1,3 @@
-
-
 #define NOMINMAX
 
 #include "MapChip.h"
@@ -8,20 +6,6 @@
 #include "Input.h"
 #include "ImGui/imgui.h"
 #include <algorithm>
-
-
-namespace
-{
-	////同じ名前の変数はあとでまとめましょう
-	//const int IMAGE_SIZE = { 32 }; // 画像のサイズ
-	//const int MAP_CHIP_WIDTH = { 16 };//チップの横並び数
-	//const int MAP_CHIP_HEIGHT = { 12 };//チップの縦並び数
-	//const int MAP_CHIP_NUM_X = { 8 };//マップチップウィンドウの横並び数
-	//const int MAP_CHIP_NUM_Y = { 24 };//マップチップウィンドウの縦並び数
-	//const int MAP_CHIP_WIN_WIDTH = { IMAGE_SIZE * MAP_CHIP_NUM_X };//ウィンドウの横幅
-	//const int MAP_CHIP_WIN_HEIGHT = { IMAGE_SIZE * MAP_CHIP_NUM_Y };//ウィンドウの縦幅
-
-}
 
 MapChip::MapChip()
 	: GameObject(), isUpdate_(false), isInMapChipArea_(false), selectedIndex_(-1)
